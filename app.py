@@ -1,9 +1,11 @@
 import streamlit as st
-import sqlite3
 import pandas as pd
-import plotly.graph_objects as go
+import matplotlib.pyplot as plt
+import sqlite3
 from datetime import datetime, timedelta
 import calendar
+
+
 
 # Configuração da página
 st.set_page_config(page_title="Metas 2026 SJ Consulting", layout="wide", page_icon="🎯")
