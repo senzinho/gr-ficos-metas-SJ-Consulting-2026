@@ -4,8 +4,7 @@ import matplotlib.pyplot as plt
 import sqlite3
 from datetime import datetime, timedelta
 import calendar
-
-
+import numpy as np
 
 # Configuração da página
 st.set_page_config(page_title="Metas 2026 SJ Consulting", layout="wide", page_icon="🎯")
@@ -68,6 +67,9 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
+# Configurar estilo do matplotlib
+plt.style.use('dark_background')
+
 # Conexão com banco de dados
 def init_db():
     conn = sqlite3.connect('metas.db')
@@ -118,6 +120,30 @@ def obter_dados_mensais(conn, ano):
     """
     c.execute(query, (str(ano),))
     return c.fetchall()
+
+# Função para criar gráfico de rosca
+def criar_grafico_rosca(realizado, faltam, cor, nome, meta_mensal):
+    fig, ax = plt.subplots(figsize=(5, 5), facecolor='#000000')
+    ax.set_facecolor('#000000')
+    
+    valores = [realizado, faltam]
+    cores_grafico = [cor, '#1a1a1a']
+    percentual = (realizado / meta_mensal * 100) if meta_mensal > 0 else 0
+    
+    # Criar gráfico de rosca
+    wedges, texts = ax.pie(valores, colors=cores_grafico, startangle=90, 
+                            wedgeprops=dict(width=0.4, edgecolor='#000000', linewidth=2))
+    
+    # Adicionar texto no centro
+    ax.text(0, 0.1, f'{percentual:.0f}%', ha='center', va='center', 
+            fontsize=32, color='#d7d4cb', weight='bold')
+    ax.text(0, -0.15, f'Faltam: {faltam}', ha='center', va='center', 
+            fontsize=12, color='#d7d4cb')
+    ax.text(0, 0.6, f'{realizado}/{meta_mensal}', ha='center', va='center', 
+            fontsize=14, color='#d7d4cb', weight='bold')
+    
+    plt.tight_layout()
+    return fig
 
 # Inicializar banco de dados
 conn = init_db()
@@ -202,7 +228,6 @@ if metas_periodo:
     
     for idx, (nome, meta_mensal, realizado) in enumerate(metas_periodo):
         faltam = max(meta_mensal - realizado, 0)
-        percentual = (realizado / meta_mensal * 100) if meta_mensal > 0 else 0
         
         # Ícones Font Awesome por categoria
         icones_fa = {
@@ -223,36 +248,10 @@ if metas_periodo:
             </div>
             """, unsafe_allow_html=True)
             
-            fig = go.Figure(data=[go.Pie(
-                labels=['Realizado', 'Faltam'],
-                values=[realizado, faltam],
-                hole=0.6,
-                marker=dict(colors=[cores[idx % len(cores)], '#1a1a1a']),
-                textfont=dict(size=16, color='white'),
-                hovertemplate='<b>%{label}</b><br>Valor: %{value}<br>%{percent}<extra></extra>'
-            )])
-            
-            fig.update_layout(
-                title=dict(
-                    text=f"<b>{realizado}/{meta_mensal}</b>",
-                    font=dict(size=18, color='#d7d4cb'),
-                    x=0.5,
-                    xanchor='center'
-                ),
-                showlegend=False,
-                paper_bgcolor='#000000',
-                plot_bgcolor='#000000',
-                height=280,
-                margin=dict(t=40, b=20, l=20, r=20),
-                annotations=[dict(
-                    text=f'{percentual:.0f}%<br><span style="font-size:14px">Faltam: {faltam}</span>',
-                    x=0.5, y=0.5,
-                    font=dict(size=24, color='#d7d4cb'),
-                    showarrow=False
-                )]
-            )
-            
-            st.plotly_chart(fig, use_container_width=True)
+            # Criar e exibir gráfico de rosca
+            fig = criar_grafico_rosca(realizado, faltam, cores[idx % len(cores)], nome, meta_mensal)
+            st.pyplot(fig)
+            plt.close(fig)
 else:
     st.info("📝 Nenhuma meta registrada para o período selecionado.")
 
@@ -268,8 +267,9 @@ dados_mensais = obter_dados_mensais(conn, ano_selecionado)
 # Preparar dados para o gráfico
 df_dados = pd.DataFrame(dados_mensais, columns=['nome', 'mes', 'total'])
 
-# Criar o gráfico de linhas
-fig_linha = go.Figure()
+# Criar o gráfico de linhas com matplotlib
+fig_linha, ax = plt.subplots(figsize=(14, 6), facecolor='#000000')
+ax.set_facecolor('#000000')
 
 cores_linha = {
     "Sites": "#9333ea",
@@ -298,57 +298,38 @@ for tipo_meta in ["Sites", "Delivery", "Ecommerce", "Tráfego", "Celina IA"]:
         acumulado += valor_mes
         valores_mensais.append(acumulado)
     
+    cor = cores_linha.get(tipo_meta, '#d7d4cb')
+    
     # Linha de realizado
-    fig_linha.add_trace(go.Scatter(
-        x=nomes_meses,
-        y=valores_mensais,
-        mode='lines+markers',
-        name=f'{tipo_meta} (Realizado)',
-        line=dict(color=cores_linha.get(tipo_meta, '#d7d4cb'), width=3),
-        marker=dict(size=8)
-    ))
+    ax.plot(nomes_meses, valores_mensais, 
+            color=cor, linewidth=3, marker='o', markersize=8, 
+            label=f'{tipo_meta} (Realizado)')
     
     # Linha de meta (linha pontilhada)
     metas_linha = [meta_mensal * (i+1) for i in range(12)]
-    fig_linha.add_trace(go.Scatter(
-        x=nomes_meses,
-        y=metas_linha,
-        mode='lines',
-        name=f'{tipo_meta} (Meta: {meta_anual})',
-        line=dict(color=cores_linha.get(tipo_meta, '#d7d4cb'), width=2, dash='dash'),
-        opacity=0.6
-    ))
+    ax.plot(nomes_meses, metas_linha, 
+            color=cor, linewidth=2, linestyle='--', alpha=0.6,
+            label=f'{tipo_meta} (Meta: {meta_anual})')
 
-fig_linha.update_layout(
-    title=dict(
-        text=f'<b>Acompanhamento de Metas Anuais - {ano_selecionado}</b>',
-        font=dict(size=24, color='#d7d4cb'),
-        x=0.5,
-        xanchor='center'
-    ),
-    xaxis=dict(
-        title='Mês',
-        gridcolor='#1a1a1a',
-        color='#d7d4cb'
-    ),
-    yaxis=dict(
-        title='Quantidade Acumulada',
-        gridcolor='#1a1a1a',
-        color='#d7d4cb'
-    ),
-    paper_bgcolor='#000000',
-    plot_bgcolor='#000000',
-    hovermode='x unified',
-    height=500,
-    legend=dict(
-        font=dict(color='#d7d4cb'),
-        bgcolor='#1a1a1a',
-        bordercolor='#42644b',
-        borderwidth=1
-    )
-)
+# Configurar o gráfico
+ax.set_title(f'Acompanhamento de Metas Anuais - {ano_selecionado}', 
+             fontsize=20, color='#d7d4cb', weight='bold', pad=20)
+ax.set_xlabel('Mês', fontsize=14, color='#d7d4cb')
+ax.set_ylabel('Quantidade Acumulada', fontsize=14, color='#d7d4cb')
+ax.tick_params(colors='#d7d4cb')
+ax.grid(True, alpha=0.2, color='#1a1a1a')
+ax.legend(loc='upper left', fontsize=10, facecolor='#1a1a1a', 
+          edgecolor='#42644b', framealpha=0.9, labelcolor='#d7d4cb')
 
-st.plotly_chart(fig_linha, use_container_width=True)
+# Remover bordas superiores e direitas
+ax.spines['top'].set_visible(False)
+ax.spines['right'].set_visible(False)
+ax.spines['left'].set_color('#42644b')
+ax.spines['bottom'].set_color('#42644b')
+
+plt.tight_layout()
+st.pyplot(fig_linha)
+plt.close(fig_linha)
 
 # Tabela de resumo
 st.markdown("---")
